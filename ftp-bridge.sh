@@ -97,43 +97,29 @@ load_sftp_config "$TARGET_SFTP" "SFTP2"
 # Download all files from SFTP1 to local directory
 if [ -n "$SFTP1_KEY_PATH" ]; then
     sshpass -P "Enter passphrase" -p "$SFTP1_PASSPHRASE" sftp -P "$SFTP1_PORT" -i "$SFTP1_KEY_PATH" -o PubkeyAcceptedAlgorithms=+ssh-rsa -o StrictHostKeyChecking=accept-new "$SFTP1_USER"@"$SFTP1_HOST" <<EOF
-    get -r $SFTP1_DIR ./tmp_1/
+    get -r "$SFTP1_DIR"/* /tmp/ftp-bridge/
+    rm "$SFTP1_DIR"/*
     exit
 EOF
 else
     sshpass -p "$SFTP1_PASS" sftp -P "$SFTP1_PORT" -o StrictHostKeyChecking=accept-new "$SFTP1_USER"@"$SFTP1_HOST" <<EOF
-    get -r $SFTP1_DIR ./tmp_1/
+    get -r "$SFTP1_DIR"/* /tmp/ftp-bridge/
+    rm "$SFTP1_DIR"/*
     exit
 EOF
 fi
 
-# Upload all files from local directory to SFTP2 and fetch outbound files from SFTP2 to local directory
+# Upload all files from local directory to SFTP2
 if [ -n "$SFTP2_KEY_PATH" ]; then
     sshpass -P "Enter passphrase" -p "$SFTP2_PASSPHRASE" sftp -P "$SFTP2_PORT" -i "$SFTP2_KEY_PATH" -o PubkeyAcceptedAlgorithms=+ssh-rsa -o StrictHostKeyChecking=accept-new "$SFTP2_USER"@"$SFTP2_HOST" <<EOF
-    put -r ./tmp_1/* $SFTP2_DIR
-    get -r $SFTP2_DIR ./tmp_2/
+    put -r /tmp/ftp-bridge/* $SFTP2_DIR
     exit
 EOF
 else
     sshpass -p "$SFTP2_PASS" sftp -P "$SFTP2_PORT" -o StrictHostKeyChecking=accept-new "$SFTP2_USER"@"$SFTP2_HOST" <<EOF
-    put -r ./tmp_1/* $SFTP2_DIR
-    get -r $SFTP2_DIR ./tmp_2/
+    put -r /tmp/ftp-bridge/* $SFTP2_DIR
     exit
 EOF
 fi
 
-# Upload all files from local directory to SFTP1
-if [ -n "$SFTP1_KEY_PATH" ]; then
-    sshpass -P "Enter passphrase" -p "$SFTP1_PASSPHRASE" sftp -P "$SFTP1_PORT" -i "$SFTP1_KEY_PATH" -o PubkeyAcceptedAlgorithms=+ssh-rsa -o StrictHostKeyChecking=accept-new "$SFTP1_USER"@"$SFTP1_HOST" <<EOF
-    put -r ./tmp_2/* $SFTP1_DIR
-    exit
-EOF
-else
-    sshpass -p "$SFTP1_PASS" sftp -P "$SFTP1_PORT" -o StrictHostKeyChecking=accept-new "$SFTP1_USER"@"$SFTP1_HOST" <<EOF
-    put -r ./tmp_2/* $SFTP1_DIR
-    exit
-EOF
-fi
-
-rm -rf ./tmp_1/
-rm -rf ./tmp_2/
+rm -f /tmp/ftp-bridge/*
