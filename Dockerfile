@@ -1,6 +1,8 @@
 FROM alpine:latest
 
 COPY .*.env ./etc
+RUN mkdir /etc/cert 
+COPY cert/* ./etc/cert
 COPY ftp-bridge.sh ./bin
 RUN chmod a+x /bin/ftp-bridge.sh
 RUN mkdir /tmp/ftp-bridge

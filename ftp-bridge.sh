@@ -5,6 +5,14 @@
 #   --target <target-config-file>
 SOURCE_SFTP=""
 TARGET_SFTP=""
+
+# Make sure ssh-add is running and has the necessary keys loaded
+if ! pgrep -x "ssh-add" > /dev/null
+then
+    eval "$(ssh-agent -s)"
+fi
+
+
 while [ $# -gt 0 ]; do
     case "$1" in
         --source)
@@ -94,32 +102,64 @@ load_sftp_config() {
 load_sftp_config "$SOURCE_SFTP" "SFTP1"
 load_sftp_config "$TARGET_SFTP" "SFTP2"
 
-# Download all files from SFTP1 to local directory
-if [ -n "$SFTP1_KEY_PATH" ]; then
-    sshpass -P "Enter passphrase" -p "$SFTP1_PASSPHRASE" sftp -P "$SFTP1_PORT" -i "$SFTP1_KEY_PATH" -o PubkeyAcceptedAlgorithms=+ssh-rsa -o StrictHostKeyChecking=accept-new "$SFTP1_USER"@"$SFTP1_HOST" <<EOF
-    get -r "$SFTP1_DIR"/* /tmp/ftp-bridge/
-    rm "$SFTP1_DIR"/*
-    exit
-EOF
+
+# Download all files from SFTP1 to local directory by constructing sftp command
+
+# If password is provided, use sshpass
+if [ -n "$SFTP1_PASS" ]; then
+    set -- sshpass -p "$SFTP1_PASS" sftp -P "$SFTP1_PORT"
 else
-    sshpass -p "$SFTP1_PASS" sftp -P "$SFTP1_PORT" -o StrictHostKeyChecking=accept-new "$SFTP1_USER"@"$SFTP1_HOST" <<EOF
-    get -r "$SFTP1_DIR"/* /tmp/ftp-bridge/
-    rm "$SFTP1_DIR"/*
-    exit
-EOF
+    set -- sftp -P "$SFTP1_PORT"
 fi
 
-# Upload all files from local directory to SFTP2
-if [ -n "$SFTP2_KEY_PATH" ]; then
-    sshpass -P "Enter passphrase" -p "$SFTP2_PASSPHRASE" sftp -P "$SFTP2_PORT" -i "$SFTP2_KEY_PATH" -o PubkeyAcceptedAlgorithms=+ssh-rsa -o StrictHostKeyChecking=accept-new "$SFTP2_USER"@"$SFTP2_HOST" <<EOF
-    put -r /tmp/ftp-bridge/* $SFTP2_DIR
-    exit
-EOF
-else
-    sshpass -p "$SFTP2_PASS" sftp -P "$SFTP2_PORT" -o StrictHostKeyChecking=accept-new "$SFTP2_USER"@"$SFTP2_HOST" <<EOF
-    put -r /tmp/ftp-bridge/* $SFTP2_DIR
-    exit
-EOF
+if [ -n "$SFTP1_KEY_PATH" ]; then
+    set -- "$@" -i "$SFTP1_KEY_PATH"
+
+    # If passphrase is provided, add it to ssh-add
+    if [ -n "$SFTP1_PASSPHRASE" ]; then
+        sshpass -P "Enter passphrase" -p "$SFTP1_PASSPHRASE" ssh-add "$SFTP1_KEY_PATH"
+    fi
 fi
+
+# Build SFTP1 command
+set -- "$@" -o PubkeyAcceptedAlgorithms=+ssh-rsa -o StrictHostKeyChecking=accept-new "$SFTP1_USER@$SFTP1_HOST"
+
+# Run SFTP command for SFTP1 to download files
+"$@" <<EOF
+get -r "$SFTP1_DIR"/* /tmp/ftp-bridge/
+rm "$SFTP1_DIR"/*
+exit
+EOF
+
+
+# Upload all files from local directory to SFTP2 by constructing sftp command
+
+# Reset $@ variable for SFTP2 command
+set --
+
+# If password is provided, use sshpass
+if [ -n "$SFTP2_PASS" ]; then
+    set -- sshpass -p "$SFTP2_PASS" sftp -P "$SFTP2_PORT"
+else
+    set -- sftp -P "$SFTP2_PORT"
+fi
+
+if [ -n "$SFTP2_KEY_PATH" ]; then
+    set -- "$@" -i "$SFTP2_KEY_PATH"
+
+    # If passphrase is provided, add it to ssh-add
+    if [ -n "$SFTP2_PASSPHRASE" ]; then
+        sshpass -P "Enter passphrase" -p "$SFTP2_PASSPHRASE" ssh-add "$SFTP2_KEY_PATH"
+    fi
+fi
+
+# Build SFTP2 command
+set -- "$@" -o PubkeyAcceptedAlgorithms=+ssh-rsa -o StrictHostKeyChecking=accept-new "$SFTP2_USER@$SFTP2_HOST"
+
+# Run SFTP command for SFTP2 to upload files
+"$@" <<EOF
+put -r /tmp/ftp-bridge/* $SFTP2_DIR
+exit
+EOF
 
 rm -f /tmp/ftp-bridge/*
