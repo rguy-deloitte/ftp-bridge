@@ -15,3 +15,30 @@ Then, push it to your registry, e.g. `docker push myregistry.com/myapp`.
 
 Consult Docker's [getting started](https://docs.docker.com/go/get-started-sharing/)
 docs for more detail on building and pushing.
+
+# IaC
+
+Tutorial: https://developer.hashicorp.com/terraform/tutorials/oci-get-started
+
+https://registry.terraform.io/providers/oracle/oci/latest/docs
+https://registry.terraform.io/providers/oracle/oci/latest/docs/resources/functions_function
+
+
+
+
+To list compartments: `oci iam compartment list --config-file /Users/[your username]]/.oci/config --profile DEFAULT --auth security_token --compartment-id-in-subtree true`
+
+
+## Login
+
+oci session authenticate (Then choose - 70, then type DEFAULT)
+oci session authenticate (Then choose - 70, then type FTP-BRIDGE-TF)
+oci session refresh --profile FTP-BRIDGE-TF     -- to refresh the auth token
+
+## Create 'terraform.tfvars' file as follows
+
+``
+compartment_id  = "<your_compartment_OCID_here>"
+region          = "uk-london-1"
+``
+
