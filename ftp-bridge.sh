@@ -6,12 +6,15 @@
 SOURCE_SFTP=""
 TARGET_SFTP=""
 
-# Make sure ssh-add is running and has the necessary keys loaded
-if ! pgrep -x "ssh-add" > /dev/null
-then
-    eval "$(ssh-agent -s)"
-fi
+# Create temp directory for ftp-bridge file transfer
+mkdir -p /tmp/ftp-bridge/
 
+# Run sftp-common script to load helper functions
+SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+. "$SCRIPT_DIR/sftp-common.sh"
+
+# Ensure ssh-agent is running
+ensure_ssh_agent
 
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -46,120 +49,37 @@ while [ $# -gt 0 ]; do
 done
 
 if [ -z "$SOURCE_SFTP" ] || [ -z "$TARGET_SFTP" ]; then
+    printf 'ERROR: both --source and --target are required\n'
     printf 'ERROR: both --source and --target are required\n' >&2
     exit 1
 fi
 
-if [ ! -r "$SOURCE_SFTP" ]; then
-    printf 'ERROR: source config file not found or unreadable: %s\n' "$SOURCE_SFTP" >&2
-    exit 1
-fi
+check_file_readable "$SOURCE_SFTP" "source config file"
+check_file_readable "$TARGET_SFTP" "target config file"
 
-if [ ! -r "$TARGET_SFTP" ]; then
-    printf 'ERROR: target config file not found or unreadable: %s\n' "$TARGET_SFTP" >&2
-    exit 1
-fi
+load_sftp_config "$SOURCE_SFTP" "SOURCE"
+load_sftp_config "$TARGET_SFTP" "TARGET"
 
-load_sftp_config() {
-    config_file="$1"
-    prefix="$2"
-
-    # shellcheck source=/dev/null
-    . "$config_file"
-
-    missing=""
-    for key in SFTP_HOST SFTP_USER SFTP_PORT SFTP_DIR; do
-        if [ -z "$(eval "printf '%s' \"\$$key\"")" ]; then
-            missing="${missing} ${key}"
-        fi
-    done
-    if [ -n "$missing" ]; then
-        printf 'ERROR: missing required values in %s:%s\n' "$config_file" "$missing" >&2
-        exit 1
-    fi
-
-    if [ "$prefix" = "SFTP1" ]; then
-        SFTP1_HOST="$SFTP_HOST"
-        SFTP1_USER="$SFTP_USER"
-        SFTP1_PORT="$SFTP_PORT"
-        SFTP1_PASS="$SFTP_PASS"
-        SFTP1_DIR="$SFTP_DIR"
-        SFTP1_KEY_PATH="$SFTP_KEY_PATH"
-        SFTP1_PASSPHRASE="$SFTP_PASSPHRASE"
-    else
-        SFTP2_HOST="$SFTP_HOST"
-        SFTP2_USER="$SFTP_USER"
-        SFTP2_PORT="$SFTP_PORT"
-        SFTP2_PASS="$SFTP_PASS"
-        SFTP2_DIR="$SFTP_DIR"
-        SFTP2_KEY_PATH="$SFTP_KEY_PATH"
-        SFTP2_PASSPHRASE="$SFTP_PASSPHRASE"
-    fi
-
-    unset SFTP_HOST SFTP_USER SFTP_PORT SFTP_PASS SFTP_DIR SFTP_KEY_PATH SFTP_PASSPHRASE
+download_source_files() {
+    printf '%s\n' "Copying files from $SOURCE_DIR to /tmp/ftp-bridge/ and removing them from source"
+    run_sftp_batch "SOURCE" <<EOF
+get -r "$SOURCE_DIR"/* /tmp/ftp-bridge/
+rm "$SOURCE_DIR"/*
+exit
+EOF
 }
 
-load_sftp_config "$SOURCE_SFTP" "SFTP1"
-load_sftp_config "$TARGET_SFTP" "SFTP2"
-
-
-# Download all files from SFTP1 to local directory by constructing sftp command
-
-# If password is provided, use sshpass
-if [ -n "$SFTP1_PASS" ]; then
-    set -- sshpass -p "$SFTP1_PASS" sftp -P "$SFTP1_PORT"
-else
-    set -- sftp -P "$SFTP1_PORT"
-fi
-
-if [ -n "$SFTP1_KEY_PATH" ]; then
-    set -- "$@" -i "$SFTP1_KEY_PATH"
-
-    # If passphrase is provided, add it to ssh-add
-    if [ -n "$SFTP1_PASSPHRASE" ]; then
-        sshpass -P "Enter passphrase" -p "$SFTP1_PASSPHRASE" ssh-add "$SFTP1_KEY_PATH"
-    fi
-fi
-
-# Build SFTP1 command
-set -- "$@" -o PubkeyAcceptedAlgorithms=+ssh-rsa -o StrictHostKeyChecking=accept-new "$SFTP1_USER@$SFTP1_HOST"
-
-# Run SFTP command for SFTP1 to download files
-"$@" <<EOF
-get -r "$SFTP1_DIR"/* /tmp/ftp-bridge/
-rm "$SFTP1_DIR"/*
+upload_target_files() {
+    printf '%s\n' "Uploading files from /tmp/ftp-bridge/ to $TARGET_DIR"
+    run_sftp_batch "TARGET" <<EOF
+put -r /tmp/ftp-bridge/* $TARGET_DIR
 exit
 EOF
+}
 
-
-# Upload all files from local directory to SFTP2 by constructing sftp command
-
-# Reset $@ variable for SFTP2 command
-set --
-
-# If password is provided, use sshpass
-if [ -n "$SFTP2_PASS" ]; then
-    set -- sshpass -p "$SFTP2_PASS" sftp -P "$SFTP2_PORT"
-else
-    set -- sftp -P "$SFTP2_PORT"
-fi
-
-if [ -n "$SFTP2_KEY_PATH" ]; then
-    set -- "$@" -i "$SFTP2_KEY_PATH"
-
-    # If passphrase is provided, add it to ssh-add
-    if [ -n "$SFTP2_PASSPHRASE" ]; then
-        sshpass -P "Enter passphrase" -p "$SFTP2_PASSPHRASE" ssh-add "$SFTP2_KEY_PATH"
-    fi
-fi
-
-# Build SFTP2 command
-set -- "$@" -o PubkeyAcceptedAlgorithms=+ssh-rsa -o StrictHostKeyChecking=accept-new "$SFTP2_USER@$SFTP2_HOST"
-
-# Run SFTP command for SFTP2 to upload files
-"$@" <<EOF
-put -r /tmp/ftp-bridge/* $SFTP2_DIR
-exit
-EOF
+download_source_files
+upload_target_files
 
 rm -f /tmp/ftp-bridge/*
+
+printf '%s\n' "All files moved successfully"

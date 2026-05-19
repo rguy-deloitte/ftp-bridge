@@ -1,23 +1,14 @@
-FROM alpine:latest
-
-COPY .*.env ./etc
-RUN mkdir /etc/cert 
-COPY cert/* ./etc/cert
-RUN mkdir /tmp/ftp-bridge
-
-# Copy additional scripts to bin and make them executable
-COPY ftp-bridge.sh ./bin
-RUN chmod a+x /bin/ftp-bridge.sh
-
-COPY connection-test.sh ./bin
-RUN chmod a+x /bin/connection-test.sh
-
-# Install dependencies
-RUN apk update
-RUN apk add --no-cache sshpass openssh
-
-ENTRYPOINT [ "/bin/connection-test.sh" ]
-CMD [ "--server", "/etc/.ftp-bridge.target.env" ]
-
-# ENTRYPOINT [ "/bin/ftp-bridge.sh" ]
-# CMD [ "--source", "/etc/.ftp-bridge.source.env", "--target", "/etc/.ftp-bridge.target.env" ]
+FROM fnproject/node:20-dev as build-stage
+WORKDIR /function
+ADD package.json /function/
+RUN npm install  && chown -R $(id -u):$(id -g) node_modules
+FROM fnproject/node:20
+WORKDIR /function
+ADD . /function/
+COPY --from=build-stage /function/node_modules/ /function/node_modules/
+RUN microdnf install -y sshpass openssh-clients \
+	&& microdnf clean all
+RUN chmod -R o+r /function
+RUN chmod +x /function/connection-test.sh
+RUN chmod +x /function/lockton.source.env
+ENTRYPOINT ["node", "func.js"]

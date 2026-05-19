@@ -1,0 +1,11 @@
+{
+	"name": "ftp-bridge-function",
+    "version": "1.0.0",
+	"description": "Project Fn based ftp-bridge for deployment in Oracle Cloud Infrastructure using Terraform",
+	"main": "func.js",
+	"author": "",
+	"license": "Apache-2.0",
+	"dependencies": {
+		"@fnproject/fdk": ">=0.0.98"
+	}
+}
