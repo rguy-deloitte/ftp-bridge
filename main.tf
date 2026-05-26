@@ -2,7 +2,7 @@ terraform {
   required_providers {
     oci = {
       source  = "oracle/oci"
-      version = "8.13.0"
+      version = "8.15.0"
     }
   }
 }
@@ -30,39 +30,63 @@ resource "oci_core_subnet" "ftpb_subnet" {
 }
 
 resource "oci_core_nat_gateway" "ftpb_nat_gateway" {
-    #Required
     compartment_id = var.compartment_id
     vcn_id = oci_core_vcn.ftpb_vcn.id
-
-    #Optional
-    block_traffic = true
+    block_traffic = false
     display_name = "ftp-bridge-natg"
-    # public_ip_id = oci_core_public_ip.test_public_ip.id
-    # route_table_id = oci_core_route_table.test_route_table.id
+}
 
-    # defined_tags = {"Operations.CostCenter"= "42"}
-    # freeform_tags = {"Department"= "Finance"}
+resource "oci_core_service_gateway" "ftpb_service_gateway" {
+    display_name = "ftp-bridge-servgate"
+    compartment_id = var.compartment_id
+    services {
+        service_id = "ocid1.service.oc1.uk-london-1.aaaaaaaatwg7f5mnzoapfunl66n2qkp4ormiykqk3hiwksum63gcyjk7ysla"
+    }
+    vcn_id = oci_core_vcn.ftpb_vcn.id
+}
+
+# data "oci_core_services" "test_services" {
+#   filter {
+#     name   = "name"
+#     values = ["All .* Services In Oracle Services Network"]
+#     regex  = true
+#   }
+# }
+
+# output "services" {
+#   value = [data.oci_core_services.test_services.services]
+# }
+
+resource "oci_core_route_table" "ftpb_private_rt" {
+    compartment_id = var.compartment_id
+    vcn_id         = oci_core_vcn.ftpb_vcn.id
+    display_name   = "ftp-bridge-private-rt"
+
+    route_rules {
+        destination_type  = "CIDR_BLOCK"
+        destination       = "0.0.0.0/0"
+        network_entity_id = oci_core_nat_gateway.ftpb_nat_gateway.id
+    }
+
+    route_rules {
+        destination_type  = "SERVICE_CIDR_BLOCK"
+        destination = "all-lhr-services-in-oracle-services-network"
+        network_entity_id = oci_core_service_gateway.ftpb_service_gateway.id
+    }
+}
+
+resource "oci_core_route_table_attachment" "ftpb_subnet_rt_attach" {
+    subnet_id      = oci_core_subnet.ftpb_subnet.id
+    route_table_id = oci_core_route_table.ftpb_private_rt.id
 }
 
 resource "oci_functions_application" "ftpb_fnapplication" {
-  #Required
   compartment_id = var.compartment_id
   display_name   = "ftp-bridge-application"
   subnet_ids     = [oci_core_subnet.ftpb_subnet.id]
 
-  #Optional
-  # config                     = var.config
-  # syslog_url                 = var.syslog_url
-  # network_security_group_ids = [oci_core_network_security_group.test_network_security_group.id]
   image_policy_config {
-    #Required
     is_policy_enabled = false
-
-    #Optional
-    #key_details {
-      #Required
-    #  kms_key_id = var.kms_key_ocid
-    #}
   }
 
   # trace_config {
@@ -70,49 +94,19 @@ resource "oci_functions_application" "ftpb_fnapplication" {
   #  is_enabled = var.application_trace_config.is_enabled
   # }
 
-  # shape = var.application_shape
-
-#  security_attributes = {
-#    "oracle-zpr.sensitivity.value" = "low"
-#    "oracle-zpr.sensitivity.mode" = "enforce"
-#  }
-  
- # logging {
-
-    #Optional
-#    line_format = var.application_logging_line_format
-#  }
+  # logging {
+      #Optional
+  #    line_format = var.application_logging_line_format
+  #  }
 }
 
-# resource "oci_functions_function" "test_function" {
-#   #Required
-#   application_id = oci_functions_application.ftpb_fnapplication.id
-#   display_name   = "ftp-bridge-function"
-#   image          = var.function_image
-#   memory_in_mbs  = var.function_memory_in_mbs
+resource "oci_functions_function" "ftpb_function" {
+  application_id = oci_functions_application.ftpb_fnapplication.id
+  display_name   = "ftp-bridge-function"
+  image           = "lhr.ocir.io/[repositoryNamespace]/ftp-bridge:0.1.0"
+  memory_in_mbs  = 128
 
-#   #Optional
-#   config             = var.config
-#   image_digest       = var.function_image_digest
-#   timeout_in_seconds = var.function_timeout_in_seconds
-#   trace_config {
-#     is_enabled = var.function_trace_config.is_enabled
-#   }
-
-#   provisioned_concurrency_config {
-#     strategy = "CONSTANT"
-#     count = 40
-#   }
-
-#   detached_mode_timeout_in_seconds = var.function_detached_mode_timeout_in_seconds
-#   failure_destination {
-#     kind = "QUEUE"
-#     channel_id = "failure123"
-#     queue_id = oci_queue_queue.test_queue.id
-#   }
-
-#   success_destination {
-#     kind = "STREAM"
-#     stream_id = oci_streaming_stream.test_stream.id
-#   }
-# }
+  trace_config {
+    is_enabled = true
+  }
+}

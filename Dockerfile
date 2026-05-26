@@ -1,4 +1,4 @@
-FROM fnproject/node:20-dev as build-stage
+FROM fnproject/node:20-dev AS build-stage
 WORKDIR /function
 ADD package.json /function/
 RUN npm install  && chown -R $(id -u):$(id -g) node_modules
@@ -10,5 +10,5 @@ RUN microdnf install -y sshpass openssh-clients \
 	&& microdnf clean all
 RUN chmod -R o+r /function
 RUN chmod +x /function/connection-test.sh
-RUN chmod +x /function/lockton.source.env
+# RUN chmod +x /function/lockton.source.env
 ENTRYPOINT ["node", "func.js"]
