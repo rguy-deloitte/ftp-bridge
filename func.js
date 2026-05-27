@@ -11,6 +11,13 @@ fdk.handle(function(input){
     target = input.target;
   }
 
+  // If input.test is present, run the connection test instead of the ftp-bridge script
+  if (input.test) {
+    const testOutput = execSync(`sh connection-test.sh --server ${source}`).toString();
+    console.log(`Connection test has been run, output:\n${testOutput}`);
+    return {'output': testOutput}
+  }
+
   // Run the shell script and capture the output
   const output = execSync(`sh ftp-bridge.sh --source ${source} --target ${target}`).toString();
   // const output = execSync(`sh connection-test.sh --server ${credentials}`).toString();
