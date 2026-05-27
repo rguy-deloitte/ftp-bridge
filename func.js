@@ -2,27 +2,24 @@ const fdk = require('@fnproject/fdk');
 const { execSync } = require('child_process');
 
 fdk.handle(function(input){
-  let source = 'lockton.source.env';
-  let target = 'lockton.target.env';
-  if (input.source) {
+  let source = '';
+
+  // If input.source is empty, return an error message
+  if (!input.source) {
+    return {'error': 'Source is required'};
+  } else {
     source = input.source;
   }
+
   if (input.target) {
-    target = input.target;
+    // Run the ftp-bridge script and capture the output
+    const output = execSync(`sh ftp-bridge.sh --source ${source} --target ${input.target}`).toString();
+  } else {
+    // Run the connection-test script and capture the output
+    const output = execSync(`sh connection-test.sh --server ${source}`).toString();
   }
 
-  // If input.test is present, run the connection test instead of the ftp-bridge script
-  if (input.test) {
-    const testOutput = execSync(`sh connection-test.sh --server ${source}`).toString();
-    console.log(`Connection test has been run, output:\n${testOutput}`);
-    return {'output': testOutput}
-  }
-
-  // Run the shell script and capture the output
-  const output = execSync(`sh ftp-bridge.sh --source ${source} --target ${target}`).toString();
-  // const output = execSync(`sh connection-test.sh --server ${credentials}`).toString();
-
-  console.log(`ftp-bridge running:\n${output}`);
-  // console.log(`\nConnection test has been run, output:\n${output}`);
+  // Log the output and return it in JSON format
+  console.log(output);
   return {'output': output}
 })
