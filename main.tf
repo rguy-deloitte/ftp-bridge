@@ -103,7 +103,13 @@ resource "oci_functions_application" "ftpb_fnapplication" {
 resource "oci_functions_function" "ftpb_function" {
   application_id = oci_functions_application.ftpb_fnapplication.id
   display_name   = "ftp-bridge-function"
-  image           = "lhr.ocir.io/[repositoryNamespace]/ftp-bridge:0.1.0"
+  image          = "lhr.ocir.io/lrxlty9qeh9r/lchaplin/node-test-function:0.0.35" # full http - not working
+  # image          = "lhr.ocir.io/lrxlty9qeh9r/lchaplin/node-test-function:0.0.37" # hellow world - working
+  # image          = "lhr.ocir.io/lrxlty9qeh9r/lchaplin/node-test-function:0.0.38" # with requires statements - working
+  # image          = "lhr.ocir.io/lrxlty9qeh9r/lchaplin/node-test-function:0.0.40" # curl --version (without return) - not working
+  # image          = "lhr.ocir.io/lrxlty9qeh9r/lchaplin/node-test-function:0.0.41" # curl --version (with return) - working
+  # image          = "lhr.ocir.io/lrxlty9qeh9r/lchaplin/node-test-function:0.0.42" # curl calling internet -   
+  # image           = "lhr.ocir.io/[repositoryNamespace]/ftp-bridge:0.1.0"
   memory_in_mbs  = 128
 
   trace_config {
@@ -120,7 +126,10 @@ resource "oci_resource_scheduler_schedule" "ftpb-out-schedule" {
 
   resources {
     id = oci_functions_function.ftpb_function.id
-    parameters = [ { "parameterType": "BODY", "value": { "source": ".lockton.source.env", "target": ".hdfc.target.env" } } ]
+    parameters {
+      parameter_type = "BODY"
+      value = "{ 'source': '.lockton.source.env', 'target': '.hdfc.target.env' }"
+    }
   }
 
   #Optional
@@ -162,3 +171,54 @@ resource "oci_identity_policy" "ftpb-schedule-policy" {
     name = "ftp-bridge-schedule-policy"
     statements = ["Allow dynamic-group ftp-bridge-schedule-dynamic-group to manage functions-family in tenancy"]
 }
+
+resource "oci_logging_log_group" "ftpb_log_group" {
+  #Required
+  compartment_id = var.compartment_id
+  display_name   = "ftp-bridge-loggroup"
+
+  lifecycle {
+    ignore_changes = [ defined_tags ]
+  }
+}
+
+resource "oci_logging_log" "test_log" {
+  #Required
+  display_name  = "ftp-bridge-log"
+  log_group_id  = oci_logging_log_group.ftpb_log_group.id
+  log_type      = "SERVICE"
+
+  # #Optional
+  # configuration {
+  #   #Required
+  #   source {
+  #     #Required
+  #     category    = var.log_configuration_source_category
+  #     resource    = var.log_configuration_source_resource
+  #     service     = var.log_configuration_source_service
+  #     source_type = var.log_configuration_source_source_type
+
+  #     #Optional
+  #     parameters = var.log_configuration_source_parameters
+  #   }
+
+  #   #Optional
+  #   compartment_id = ""
+  # }
+
+  # freeform_tags      = var.freeform_tags_value
+  # retention_duration = "30"
+
+}
+
+# data "oci_logging_logs" "test_logs" {
+#   #Required
+#   log_group_id = var.test_log_group_id
+
+#   #Optional
+#   display_name    = var.test_log_name
+#   log_type        = var.log_log_type.service
+#   source_resource = var.log_source_resource
+#   source_service  = var.log_source_service
+#   state           = "ACTIVE"
+# }
