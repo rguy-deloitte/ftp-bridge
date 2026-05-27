@@ -7,3 +7,7 @@ variable "region" {
   type        = string
   default     = "us-sanjose-1"
 }
+variable "tenancy_ocid" {
+  description = "OCID from your tenancy page"
+  type        = string
+}

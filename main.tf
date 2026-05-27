@@ -110,3 +110,55 @@ resource "oci_functions_function" "ftpb_function" {
     is_enabled = true
   }
 }
+
+resource "oci_resource_scheduler_schedule" "ftpb-out-schedule" {
+  #Required
+  action             = "START_RESOURCE"
+  compartment_id     = var.compartment_id
+  recurrence_details = "0 * * * * *"
+  recurrence_type    = "CRON"
+
+  resources {
+    id = oci_functions_function.ftpb_function.id
+    parameters = [ { "parameterType": "BODY", "value": { "source": ".lockton.source.env", "target": ".hdfc.target.env" } } ]
+  }
+
+  #Optional
+  description   = "Schedule to run ftp-bridge outbound transfer at 0 minutes past each hour"
+  display_name  = "ftp-bridge-outbound-hourly-0"
+  # time_starts = var.schedule_time_starts
+}
+
+resource "oci_resource_scheduler_schedule" "ftpb-in-schedule" {
+  #Required
+  action             = "START_RESOURCE"
+  compartment_id     = var.compartment_id
+  recurrence_details = "10 * * * * *"
+  recurrence_type    = "CRON"
+
+  resources {
+    id = oci_functions_function.ftpb_function.id
+    parameters = [ { "parameterType": "BODY", "value": { "source": ".hdfc.source.env", "target": ".lockton.target.env" } } ]
+  }
+
+  #Optional
+  description   = "Schedule to run ftp-bridge inbound transfer at 10 minutes past each hour"
+  display_name  = "ftp-bridge-inbound-hourly-10"
+  # time_starts = var.schedule_time_starts
+}
+
+resource "oci_identity_dynamic_group" "ftpb-dynamic_group" {
+    #Required
+    compartment_id = var.tenancy_ocid
+    description = "Dynamic group for ftp-bridge schedules which need permissions to invoke OCI functions"
+    matching_rule = "ANY {resource.id='${oci_resource_scheduler_schedule.ftpb-out-schedule.id}', resource.id='${oci_resource_scheduler_schedule.ftpb-in-schedule.id}'}"
+    name = "ftp-bridge-schedule-dynamic-group"
+}
+
+resource "oci_identity_policy" "ftpb-schedule-policy" {
+    #Required
+    compartment_id = var.compartment_id
+    description = "Policy to allow ftp-bridge schedules to invoke OCI functions"
+    name = "ftp-bridge-schedule-policy"
+    statements = ["Allow dynamic-group ftp-bridge-schedule-dynamic-group to manage functions-family in tenancy"]
+}
