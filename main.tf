@@ -10,7 +10,7 @@ terraform {
 provider "oci" {
   region              = var.region
   auth                = "SecurityToken"
-  config_file_profile = "ftp-bridge-tf"
+  config_file_profile = "FTP-BRIDGE-TF"
 }
 
 resource "oci_core_vcn" "ftpb_vcn" {
@@ -121,14 +121,16 @@ resource "oci_resource_scheduler_schedule" "ftpb-out-schedule" {
   #Required
   action             = "START_RESOURCE"
   compartment_id     = var.compartment_id
-  recurrence_details = "0 * * * * *"
+  recurrence_details = "0 * * * *"
   recurrence_type    = "CRON"
 
   resources {
     id = oci_functions_function.ftpb_function.id
     parameters {
-      parameter_type = "BODY"
-      value = "{ 'source': '.lockton.source.env', 'target': '.hdfc.target.env' }"
+        parameter_type = "BODY"
+        value = [jsonencode({
+          source = ".lockton.source.env"
+        })]
     }
   }
 
@@ -142,12 +144,17 @@ resource "oci_resource_scheduler_schedule" "ftpb-in-schedule" {
   #Required
   action             = "START_RESOURCE"
   compartment_id     = var.compartment_id
-  recurrence_details = "10 * * * * *"
+  recurrence_details = "10 * * * *"
   recurrence_type    = "CRON"
 
   resources {
     id = oci_functions_function.ftpb_function.id
-    parameters = [ { "parameterType": "BODY", "value": { "source": ".hdfc.source.env", "target": ".lockton.target.env" } } ]
+    parameters {
+      parameter_type = "BODY"
+      value = [jsonencode({
+        source = ".hdfc.source.env"
+      })]
+    }
   }
 
   #Optional
@@ -166,59 +173,43 @@ resource "oci_identity_dynamic_group" "ftpb-dynamic_group" {
 
 resource "oci_identity_policy" "ftpb-schedule-policy" {
     #Required
-    compartment_id = var.compartment_id
+    compartment_id = var.tenancy_ocid
     description = "Policy to allow ftp-bridge schedules to invoke OCI functions"
     name = "ftp-bridge-schedule-policy"
-    statements = ["Allow dynamic-group ftp-bridge-schedule-dynamic-group to manage functions-family in tenancy"]
+    statements = ["Allow dynamic-group ${oci_identity_dynamic_group.ftpb-dynamic_group.name} to manage functions-family in tenancy"]
 }
 
-resource "oci_logging_log_group" "ftpb_log_group" {
-  #Required
-  compartment_id = var.compartment_id
-  display_name   = "ftp-bridge-loggroup"
-
-  lifecycle {
-    ignore_changes = [ defined_tags ]
-  }
-}
-
-resource "oci_logging_log" "test_log" {
-  #Required
-  display_name  = "ftp-bridge-log"
-  log_group_id  = oci_logging_log_group.ftpb_log_group.id
-  log_type      = "SERVICE"
-
-  # #Optional
-  # configuration {
-  #   #Required
-  #   source {
-  #     #Required
-  #     category    = var.log_configuration_source_category
-  #     resource    = var.log_configuration_source_resource
-  #     service     = var.log_configuration_source_service
-  #     source_type = var.log_configuration_source_source_type
-
-  #     #Optional
-  #     parameters = var.log_configuration_source_parameters
-  #   }
-
-  #   #Optional
-  #   compartment_id = ""
-  # }
-
-  # freeform_tags      = var.freeform_tags_value
-  # retention_duration = "30"
-
-}
-
-# data "oci_logging_logs" "test_logs" {
+# resource "oci_logging_log_group" "ftpb_log_group" {
 #   #Required
-#   log_group_id = var.test_log_group_id
+#   compartment_id = var.compartment_id
+#   display_name   = "ftp-bridge-loggroup"
 
-#   #Optional
-#   display_name    = var.test_log_name
-#   log_type        = var.log_log_type.service
-#   source_resource = var.log_source_resource
-#   source_service  = var.log_source_service
-#   state           = "ACTIVE"
+#   lifecycle {
+#     ignore_changes = [ defined_tags ]
+#   }
 # }
+
+resource "oci_logging_log" "ftpb-log" {
+    #Required
+    display_name = "ftp-bridge-log"
+    log_group_id = var.logging_group_id
+    log_type = "SERVICE"
+
+    #Optional
+    configuration {
+        #Required
+        source {
+            #Required
+            category = "invoke"
+            resource = oci_functions_application.ftpb_fnapplication.id
+            service = "Functions"
+            source_type = "OCISERVICE"
+
+            #Optional
+            #parameters = var.log_configuration_source_parameters
+        }
+    }
+
+    is_enabled = "true"
+    retention_duration = "30"
+}
