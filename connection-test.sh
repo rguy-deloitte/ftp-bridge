@@ -44,9 +44,6 @@ load_sftp_config "$SOURCE_SFTP" "SOURCE"
 # Construct command to connect to SFTP and return connection status
 build_sftp_command "SOURCE"
 
-# Print the command being run for debugging purposes
-printf 'Running command: %s\n' "$*"
-
 # Run SFTP command and test connection
 "$@" <<EOF
 exit
