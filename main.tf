@@ -57,28 +57,45 @@ resource "oci_core_service_gateway" "ftpb_service_gateway" {
 #   value = [data.oci_core_services.test_services.services]
 # }
 
-resource "oci_core_route_table" "ftpb_private_rt" {
-    compartment_id = var.compartment_id
-    vcn_id         = oci_core_vcn.ftpb_vcn.id
-    display_name   = "ftp-bridge-private-rt"
+# resource "oci_core_route_table" "ftpb_private_rt" {
+#     compartment_id = var.compartment_id
+#     vcn_id         = oci_core_vcn.ftpb_vcn.id
+#     display_name   = "ftp-bridge-private-rt"
 
-    route_rules {
-        destination_type  = "CIDR_BLOCK"
-        destination       = "0.0.0.0/0"
-        network_entity_id = oci_core_nat_gateway.ftpb_nat_gateway.id
-    }
+#     route_rules {
+#         destination_type  = "CIDR_BLOCK"
+#         destination       = "0.0.0.0/0"
+#         network_entity_id = oci_core_nat_gateway.ftpb_nat_gateway.id
+#     }
 
-    route_rules {
-        destination_type  = "SERVICE_CIDR_BLOCK"
-        destination = "all-lhr-services-in-oracle-services-network"
-        network_entity_id = oci_core_service_gateway.ftpb_service_gateway.id
-    }
+#     route_rules {
+#         destination_type  = "SERVICE_CIDR_BLOCK"
+#         destination = "all-lhr-services-in-oracle-services-network"
+#         network_entity_id = oci_core_service_gateway.ftpb_service_gateway.id
+#     }
+# }
+
+resource "oci_core_default_route_table" "default-route-table" {
+  compartment_id = var.compartment_id
+  manage_default_resource_id = oci_core_vcn.ftpb_vcn.default_route_table_id
+
+  route_rules {
+      destination_type  = "CIDR_BLOCK"
+      destination       = "0.0.0.0/0"
+      network_entity_id = oci_core_nat_gateway.ftpb_nat_gateway.id
+  }
+
+  route_rules {
+      destination_type  = "SERVICE_CIDR_BLOCK"
+      destination = "all-lhr-services-in-oracle-services-network"
+      network_entity_id = oci_core_service_gateway.ftpb_service_gateway.id
+  }
 }
 
-resource "oci_core_route_table_attachment" "ftpb_subnet_rt_attach" {
-    subnet_id      = oci_core_subnet.ftpb_subnet.id
-    route_table_id = oci_core_route_table.ftpb_private_rt.id
-}
+# resource "oci_core_route_table_attachment" "ftpb_subnet_rt_attach" {
+#     subnet_id      = oci_core_subnet.ftpb_subnet.id
+#     route_table_id = oci_core_route_table.ftpb_private_rt.id
+# }
 
 resource "oci_functions_application" "ftpb_fnapplication" {
   compartment_id = var.compartment_id
@@ -103,13 +120,7 @@ resource "oci_functions_application" "ftpb_fnapplication" {
 resource "oci_functions_function" "ftpb_function" {
   application_id = oci_functions_application.ftpb_fnapplication.id
   display_name   = "ftp-bridge-function"
-  image          = "lhr.ocir.io/lrxlty9qeh9r/lchaplin/node-test-function:0.0.35" # full http - not working
-  # image          = "lhr.ocir.io/lrxlty9qeh9r/lchaplin/node-test-function:0.0.37" # hellow world - working
-  # image          = "lhr.ocir.io/lrxlty9qeh9r/lchaplin/node-test-function:0.0.38" # with requires statements - working
-  # image          = "lhr.ocir.io/lrxlty9qeh9r/lchaplin/node-test-function:0.0.40" # curl --version (without return) - not working
-  # image          = "lhr.ocir.io/lrxlty9qeh9r/lchaplin/node-test-function:0.0.41" # curl --version (with return) - working
-  # image          = "lhr.ocir.io/lrxlty9qeh9r/lchaplin/node-test-function:0.0.42" # curl calling internet -   
-  # image           = "lhr.ocir.io/[repositoryNamespace]/ftp-bridge:0.1.0"
+  image          = var.image_path
   memory_in_mbs  = 128
 
   trace_config {
@@ -127,20 +138,19 @@ resource "oci_resource_scheduler_schedule" "ftpb-out-schedule" {
   resources {
     id = oci_functions_function.ftpb_function.id
     parameters {
-        parameter_type = "BODY"
-        value = [jsonencode({
-          source = ".lockton.source.env"
-        })]
+      parameter_type = "BODY"
+      value = [jsonencode({
+        source = ".hdfc.source.env"
+      })]
     }
   }
 
   #Optional
-  description   = "Schedule to run ftp-bridge outbound transfer at 0 minutes past each hour"
-  display_name  = "ftp-bridge-outbound-hourly-0"
-  # time_starts = var.schedule_time_starts
+  description   = "Schedule to run ftp-bridge inbound transfer at 0 minutes past each hour"
+  display_name  = "ftp-bridge-inbound-hourly-0"
 }
 
-resource "oci_resource_scheduler_schedule" "ftpb-in-schedule" {
+resource "oci_resource_scheduler_schedule" "ftpb-in-schedule-0" {
   #Required
   action             = "START_RESOURCE"
   compartment_id     = var.compartment_id
@@ -160,14 +170,35 @@ resource "oci_resource_scheduler_schedule" "ftpb-in-schedule" {
   #Optional
   description   = "Schedule to run ftp-bridge inbound transfer at 10 minutes past each hour"
   display_name  = "ftp-bridge-inbound-hourly-10"
-  # time_starts = var.schedule_time_starts
+}
+
+resource "oci_resource_scheduler_schedule" "ftpb-in-schedule-1" {
+  #Required
+  action             = "START_RESOURCE"
+  compartment_id     = var.compartment_id
+  recurrence_details = "40 * * * *"
+  recurrence_type    = "CRON"
+
+  resources {
+    id = oci_functions_function.ftpb_function.id
+    parameters {
+      parameter_type = "BODY"
+      value = [jsonencode({
+        source = ".hdfc.source.env"
+      })]
+    }
+  }
+
+  #Optional
+  description   = "Schedule to run ftp-bridge inbound transfer at 40 minutes past each hour"
+  display_name  = "ftp-bridge-inbound-hourly-40"
 }
 
 resource "oci_identity_dynamic_group" "ftpb-dynamic_group" {
     #Required
     compartment_id = var.tenancy_ocid
     description = "Dynamic group for ftp-bridge schedules which need permissions to invoke OCI functions"
-    matching_rule = "ANY {resource.id='${oci_resource_scheduler_schedule.ftpb-out-schedule.id}', resource.id='${oci_resource_scheduler_schedule.ftpb-in-schedule.id}'}"
+    matching_rule = "ANY {resource.id='${oci_resource_scheduler_schedule.ftpb-out-schedule.id}', resource.id='${oci_resource_scheduler_schedule.ftpb-in-schedule-0.id}', resource.id='${oci_resource_scheduler_schedule.ftpb-in-schedule-1.id}'}"
     name = "ftp-bridge-schedule-dynamic-group"
 }
 
